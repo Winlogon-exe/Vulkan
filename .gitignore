@@ -26,13 +26,35 @@ out/
 *.userprefs
 
 # Файлы Vulkan SDK
-vulkan/           
-*.pdb             
-*.obj             
-*.ilk             
+vulkan/          
+*.pdb            
+*.obj            
+*.ilk            
 
 # Файлы, создаваемые Code::Blocks
 *.cbp            
 
 # Исполнимые файлы
-*.exe            
+*.exe             
+*.out             
+*.a               
+
+# Файлы MinGW
+*.o               
+*.dll             
+*.exe             
+*.dep             
+*.gch    
+*.in         
+
+# Игнорирование файлов конфигурации pkg-config
+*.pc
+
+# GLFW
+glfw/src/         
+glfw/CMakeFiles/  
+glfw/src/.libs    
+
+# GLM
+glm/test/      
+
