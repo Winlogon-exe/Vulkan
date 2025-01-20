@@ -1,0 +1,38 @@
+# Каталоги и файлы, создаваемые CLion
+.idea/
+*.iml
+
+# Каталоги и файлы, связанные с CMake
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+cmake_install.cmake
+Makefile
+*.cmake
+
+# Каталоги и файлы, создаваемые сборкой
+build/
+bin/
+out/
+
+# Логи и временные файлы
+*.log
+*.swp
+*.swo
+
+# Файлы с отладочной информацией
+*.dSYM/
+*.user
+*.userprefs
+
+# Файлы Vulkan SDK
+vulkan/           
+*.pdb             
+*.obj             
+*.ilk             
+
+# Файлы, создаваемые Code::Blocks
+*.cbp            
+
+# Исполнимые файлы
+*.exe            
