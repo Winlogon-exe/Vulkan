@@ -1,7 +1,33 @@
-#include <iostream>
-#include <vulkan/vulkan.h>
+#include <stdlib.h>
+#include "TriangleVulkan.h"
 
-int main() {
-    std::cout << "Hello, World!" << std::endl;
-    return 0;
+
+// 19.12.2025 - настроил проект и зависимости
+// 20.12.2025 - вспомнил теорию, создал первый класс и базовые функции для настройки окна и VKInstance
+// 21.12.2025 - вспомнил как узнавать кол-во доступных расширений для Vulkan и GLFW, вывел физ. устройства и семейство очередей
+// 22.12.2025 - разбирал что такое семейства очередей и surface, разобрал все функции неужели стало понятно
+// 23.12.2025 -
+// 24.12.2025 -
+// 25.12.2025 -
+// 26.12.2025 -
+// 27.12.2025 -
+// 28.12.2025 -
+// 29.12.2025 -
+// 30.12.2025 -
+// 31.12.2025 -
+
+
+int main()
+{
+    TriangleVulkan triangle;
+    try
+    {
+        triangle.run();
+    }
+    catch(const std::exception& exp)
+    {
+        std::cerr << exp.what() << std::endl;
+        return EXIT_FAILURE;
+    }
+    return EXIT_SUCCESS;
 }

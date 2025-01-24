@@ -58,3 +58,12 @@ glfw/src/.libs
 # GLM
 glm/test/      
 
+*.json
+*.ninja
+cmake-build-debug/.ninja_log
+cmake-build-debug/.ninja_deps
+*.frag
+*.vert
+shaders/frag.spv
+shaders/vert.spv
+shaders/compile.bat
