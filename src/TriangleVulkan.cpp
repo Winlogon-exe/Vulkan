@@ -15,7 +15,7 @@ void TriangleVulkan::run()
 void TriangleVulkan::initWindow()
 {
     glfwWindow = std::make_unique<MyWindow>();
-    glfwWindow -> init();
+    glfwWindow->init();
 }
 
 void TriangleVulkan::initVulkan()
@@ -30,6 +30,7 @@ void TriangleVulkan::initVulkan()
     createGraphicsPipeline();   // Прочитать шейдеры, создать шейдерные модули, настроить информацию о pipeline и создать графический pipeline
     createFramebuffers();       // Создать Framebuffers для каждого images из SwapChain
     createCommandPool();        // Создать Command Pool для управления очередями команд на основе индекса семейства очередей
+    createVertexBuffer();
     createCommandBuffer();      // Создать Command Buffer для записи команд рендеринга на основе commandPool
     createSyncObjects();        // Создать семафоры для синхронизации между очередями на основе VkSemaphore
 }
@@ -448,12 +449,18 @@ void TriangleVulkan::createGraphicsPipeline()
 
     VkPipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo,fragShaderStageInfo};
 
+    // настройка вершинного буфера
+    auto bindingDescription = Vertex::getBindingDescription();
+    auto attributeDescriptions = Vertex::getAttributeDescriptions();
+
     // описывает формат данных вершин, которые передаются в вершинный шейдер
     // поскольку данные вершин мы жестко прописали в вершинном шейдере, укажем, что данных для загрузки нет.
     VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
     vertexInputInfo.sType                           = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    vertexInputInfo.vertexBindingDescriptionCount   = 0;
-    vertexInputInfo.vertexAttributeDescriptionCount = 0;
+    vertexInputInfo.vertexBindingDescriptionCount   = 1;
+    vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
+    vertexInputInfo.pVertexBindingDescriptions      = &bindingDescription;
+    vertexInputInfo.pVertexAttributeDescriptions    = attributeDescriptions.data();
 
     // какая геометрия образуется из вершин и разрешен ли рестарт геометрии для таких геометрий,
     VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
@@ -489,7 +496,7 @@ void TriangleVulkan::createGraphicsPipeline()
     rasterizer.sType                    = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
     rasterizer.depthClampEnable         = VK_FALSE; //  если VK_TRUE, фрагменты, которые находятся за пределами ближней и дальней плоскости, не отсекаются
     rasterizer.rasterizerDiscardEnable  = VK_FALSE; //  если VK_TRUE, стадия растеризации отключается и выходные данные не передаются во фреймбуфер
-    rasterizer.polygonMode              = VK_POLYGON_MODE_LINE; // определяет, каким образом генерируются фрагменты
+    rasterizer.polygonMode              = VK_POLYGON_MODE_FILL; // определяет, каким образом генерируются фрагменты
     rasterizer.lineWidth                = 1.0f; // толщина отрезков
     rasterizer.cullMode                 = VK_CULL_MODE_BACK_BIT; // определяет тип отсечения (face culling)
     rasterizer.frontFace                = VK_FRONT_FACE_CLOCKWISE; // порядок обхода вершин (по часовой стрелке или против)
@@ -848,8 +855,13 @@ void TriangleVulkan::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
     scissor.extent = swapChainExtent;
     vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-    vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+    //Привязка вершинного буфера к операциям рендеринга
+    vkCmdBindPipeline(commandBuffer,VK_PIPELINE_BIND_POINT_GRAPHICS,graphicsPipeline);
+    VkBuffer vertexBuffers[] = { vertexBuffer };
+    VkDeviceSize offsets[] = {0};
+    vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
 
+    vkCmdDraw(commandBuffer, static_cast<uint32_t>(vertices.size()), 1, 0, 0);
     vkCmdEndRenderPass(commandBuffer);
 
     if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
@@ -876,27 +888,90 @@ void TriangleVulkan::createSyncObjects()
 }
 
 // ????
-void TriangleVulkan::cleanup()
-{
-    vkDestroySemaphore(device, renderFinishedSemaphore, nullptr);
-    vkDestroySemaphore(device, imageAvailableSemaphore, nullptr);
-    vkDestroyCommandPool(device, commandPool, nullptr);
-    for (auto framebuffer : swapChainFramebuffers)
-    {
-        vkDestroyFramebuffer(device, framebuffer, nullptr);
-    }
+void TriangleVulkan::cleanup() {
+    cleanupSwapChain();
 
     vkDestroyPipeline(device, graphicsPipeline, nullptr);
     vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
     vkDestroyRenderPass(device, renderPass, nullptr);
 
+    vkDestroyBuffer(device, vertexBuffer, nullptr);
+    vkFreeMemory(device, vertexBufferMemory, nullptr);
+
+    vkDestroyCommandPool(device, commandPool, nullptr);
+
+    vkDestroyDevice(device, nullptr);
+
+    vkDestroySurfaceKHR(instance, surface, nullptr);
+    vkDestroyInstance(instance, nullptr);
+}
+
+// Создание буфера
+void TriangleVulkan::createVertexBuffer()
+{
+    // Буфер создан, но память еще не выделена под него
+    VkBufferCreateInfo bufferInfo{};
+    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bufferInfo.size = sizeof(vertices[0]) * vertices.size(); // размер буфера в байтах
+    bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE; // Буфер будет использоваться только из графической очереди, поэтому мы можем придерживаться эксклюзивного доступа.
+
+    if (vkCreateBuffer(device,&bufferInfo,nullptr,&vertexBuffer) != VK_SUCCESS)
+    {
+        throw std::runtime_error("failed to create vertex buffer!");
+    }
+
+    // Выделение памяти для буфера
+    VkMemoryRequirements memRequirements{};
+    vkGetBufferMemoryRequirements(device, vertexBuffer, &memRequirements);
+
+    VkMemoryAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocInfo.allocationSize = memRequirements.size;
+    allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits,VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+    if (vkAllocateMemory(device,&allocInfo,nullptr,&vertexBufferMemory))
+    {
+        throw std::runtime_error("failed to allocate vertex buffer memory!");
+    }
+
+    //связать буфер с памятью
+    vkBindBufferMemory(device,vertexBuffer,vertexBufferMemory,0);
+
+    // Заполнение вершинного буфера
+    void* data;
+    vkMapMemory(device, vertexBufferMemory, 0, bufferInfo.size, 0, &data);
+    memcpy(data, vertices.data(), (size_t)bufferInfo.size);
+    vkUnmapMemory(device, vertexBufferMemory);
+
+
+}
+
+void TriangleVulkan::cleanupSwapChain()
+{
+    for (auto framebuffer : swapChainFramebuffers)
+    {
+        vkDestroyFramebuffer(device, framebuffer, nullptr);
+    }
+
     for (auto imageView : swapChainImageViews)
     {
         vkDestroyImageView(device, imageView, nullptr);
     }
-
     vkDestroySwapchainKHR(device, swapChain, nullptr);
-    vkDestroyDevice(device, nullptr);
-    vkDestroySurfaceKHR(instance, surface, nullptr);
-    vkDestroyInstance(instance, nullptr);
+}
+
+// Требования к памяти
+uint32_t TriangleVulkan::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties)
+{
+    VkPhysicalDeviceMemoryProperties memProperties{};
+    vkGetPhysicalDeviceMemoryProperties(physicalDevice,&memProperties);
+    for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++)
+    {
+        if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties)
+        {
+            return i;
+        }
+    }
+    throw std::runtime_error("failed to find suitable memory type!");
 }
