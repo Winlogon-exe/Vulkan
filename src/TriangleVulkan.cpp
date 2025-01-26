@@ -8,31 +8,30 @@ void TriangleVulkan::run()
 {
     initWindow();
     initVulkan();
-    mainLoop();
+    glfwWindow->mainLoop([this]() { drawFrame(); });
     cleanup();
 }
 
 void TriangleVulkan::initWindow()
 {
-    glfwInit();
-    glfwWindowHint(GLFW_CLIENT_API,GLFW_NO_API);// No OpenGl
-    glfwWindowHint(GLFW_RESIZABLE,GLFW_FALSE);
-    window = glfwCreateWindow(WIDTH,HEIGHT,"TriangleVulkan", nullptr, nullptr);
+    glfwWindow = std::make_unique<MyWindow>();
+    glfwWindow -> init();
 }
 
-void TriangleVulkan::initVulkan() {
-    createInstance();
-    createSurface();
-    pickPhysicalDevice();
-    createLogicalDevice();
-    createSwapChain();
-    createImageViews();
-    createRenderPass();
-    createGraphicsPipeline();
-    createFramebuffers();
-    createCommandPool();
-    createCommandBuffer();
-    createSyncObjects();
+void TriangleVulkan::initVulkan()
+{
+    createInstance();           // Получить расширения, заполнить VkApplicationInfo, VkInstanceCreateInfo, создать Instance
+    createSurface();            // Создать окно и связать его с поверхностью (Surface) для рендеринга
+    pickPhysicalDevice();       // Выбрать физическое устройство, поддерживающее нужные расширения, включая поддержку SwapChain и семейств очередей
+    createLogicalDevice();      // Создать логическое устройство на основе выбранного физического устройства и семейства очередей
+    createSwapChain();          // Создать SwapChain на основе поддерживаемых форматов
+    createImageViews();         // Создать Image Views на основе изображений из SwapChain для рендеринга
+    createRenderPass();         // создать Render Pass
+    createGraphicsPipeline();   // Прочитать шейдеры, создать шейдерные модули, настроить информацию о pipeline и создать графический pipeline
+    createFramebuffers();       // Создать Framebuffers для каждого images из SwapChain
+    createCommandPool();        // Создать Command Pool для управления очередями команд на основе индекса семейства очередей
+    createCommandBuffer();      // Создать Command Buffer для записи команд рендеринга на основе commandPool
+    createSyncObjects();        // Создать семафоры для синхронизации между очередями на основе VkSemaphore
 }
 
 void TriangleVulkan::createInstance()
@@ -61,7 +60,7 @@ void TriangleVulkan::createInstance()
 // указываем куда будет выводиться изображение(не создаем окно, а указываем куда)
 void TriangleVulkan::createSurface()
 {
-    if (glfwCreateWindowSurface(instance,window,nullptr,&surface) != VK_SUCCESS)
+    if (glfwCreateWindowSurface(instance,glfwWindow->getWindow(),nullptr,&surface) != VK_SUCCESS)
     {
         throw std::runtime_error("Failed to create window Surface");
     }
@@ -69,11 +68,9 @@ void TriangleVulkan::createSurface()
 
 void TriangleVulkan::checkGlfwExtension(VkInstanceCreateInfo &createInfo)
 {
-    uint32_t glfwExtensionCount = 0;
-    const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
-
-    createInfo.ppEnabledExtensionNames = glfwExtensions;
-    createInfo.enabledExtensionCount = glfwExtensionCount;
+    std::pair<uint32_t,const char**> extension = glfwWindow -> getExtension();
+    createInfo.enabledExtensionCount = extension.first;
+    createInfo.ppEnabledExtensionNames = extension.second;
 }
 
 void TriangleVulkan::checkVkExtension()
@@ -91,7 +88,6 @@ void TriangleVulkan::checkVkExtension()
 // и только потом если все это оно поддерживает мы его пикаем иначе runtime error
 void TriangleVulkan::pickPhysicalDevice()
 {
-
     uint32_t deviceCount = 0;
     vkEnumeratePhysicalDevices(instance,&deviceCount, nullptr);
 
@@ -159,7 +155,8 @@ QueueFamilyIndices TriangleVulkan::findQueueFamilies(const VkPhysicalDevice& dev
         VkBool32 presentSupport = false;
         vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
 
-        if (presentSupport) {
+        if (presentSupport)
+        {
             indices.presentFamily = i;
         }
 
@@ -195,7 +192,7 @@ void TriangleVulkan::printVkExtensions(const std::vector<VkExtensionProperties> 
 }
 
 void TriangleVulkan::createLogicalDevice()
- {
+{
     QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
 
     std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
@@ -224,7 +221,8 @@ void TriangleVulkan::createLogicalDevice()
     createInfo.enabledExtensionCount   = static_cast<uint32_t>(deviceExtensions.size());
     createInfo.enabledLayerCount       = 0;
 
-    if (vkCreateDevice(physicalDevice, &createInfo, nullptr, &device) != VK_SUCCESS) {
+    if (vkCreateDevice(physicalDevice, &createInfo, nullptr, &device) != VK_SUCCESS)
+    {
         throw std::runtime_error("failed to create logical device!");
     }
 
@@ -335,7 +333,7 @@ VkExtent2D TriangleVulkan::chooseSwapChainExtent(const VkSurfaceCapabilitiesKHR 
     else
     {
         int width,height;
-        glfwGetFramebufferSize(window,&width,&height);
+        glfwGetFramebufferSize(glfwWindow->getWindow(),&width,&height);
 
         VkExtent2D actualExtent  = {
                 static_cast<uint32_t> (width),
@@ -419,14 +417,14 @@ void TriangleVulkan::createSwapChain()
     swapChainExtent = extent;
 }
 
-void TriangleVulkan::mainLoop()
-{
-    while (!glfwWindowShouldClose(window))
-    {
-        glfwPollEvents();
-        drawFrame();
-    }
-}
+//void TriangleVulkan::mainLoop()
+//{
+//    while (!glfwWindowShouldClose(window))
+//    {
+//        glfwPollEvents();
+//        drawFrame();
+//    }
+//}
 
 void TriangleVulkan::createGraphicsPipeline()
 {
@@ -491,7 +489,7 @@ void TriangleVulkan::createGraphicsPipeline()
     rasterizer.sType                    = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
     rasterizer.depthClampEnable         = VK_FALSE; //  если VK_TRUE, фрагменты, которые находятся за пределами ближней и дальней плоскости, не отсекаются
     rasterizer.rasterizerDiscardEnable  = VK_FALSE; //  если VK_TRUE, стадия растеризации отключается и выходные данные не передаются во фреймбуфер
-    rasterizer.polygonMode              = VK_POLYGON_MODE_FILL; // определяет, каким образом генерируются фрагменты
+    rasterizer.polygonMode              = VK_POLYGON_MODE_LINE; // определяет, каким образом генерируются фрагменты
     rasterizer.lineWidth                = 1.0f; // толщина отрезков
     rasterizer.cullMode                 = VK_CULL_MODE_BACK_BIT; // определяет тип отсечения (face culling)
     rasterizer.frontFace                = VK_FRONT_FACE_CLOCKWISE; // порядок обхода вершин (по часовой стрелке или против)
@@ -703,7 +701,8 @@ void TriangleVulkan::createImageViews()
         createInfo.subresourceRange.baseArrayLayer = 0;
         createInfo.subresourceRange.layerCount = 1;
 
-        if (vkCreateImageView(device, &createInfo, nullptr, &swapChainImageViews[i]) != VK_SUCCESS) {
+        if (vkCreateImageView(device, &createInfo, nullptr, &swapChainImageViews[i]) != VK_SUCCESS)
+        {
             throw std::runtime_error("failed to create image views!");
         }
     }
@@ -900,6 +899,4 @@ void TriangleVulkan::cleanup()
     vkDestroyDevice(device, nullptr);
     vkDestroySurfaceKHR(instance, surface, nullptr);
     vkDestroyInstance(instance, nullptr);
-    glfwDestroyWindow(window);
-    glfwTerminate();
 }

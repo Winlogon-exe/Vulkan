@@ -6,8 +6,7 @@
 #define VULKAN_LEARN_TRIANGLEVULKAN_H
 
 #define GLFW_INCLUDE_VULKAN
-#include "GLFW/glfw3.h"
-#include "GLFW/glfw3native.h"
+#include "MyWindow.h"
 
 #include <iostream>
 #include <stdexcept>
@@ -18,6 +17,7 @@
 #include <cstring>
 #include <algorithm>
 #include <fstream>
+#include <memory>
 
 struct QueueFamilyIndices {
     std::optional<uint32_t> graphicsFamily;
@@ -30,9 +30,9 @@ struct QueueFamilyIndices {
 };
 
 struct SwapChainSupportDetails {
-    VkSurfaceCapabilitiesKHR capabilities;
     std::vector<VkSurfaceFormatKHR> formats;
-    std::vector<VkPresentModeKHR> presentModes;
+    std::vector<VkPresentModeKHR>   presentModes;
+    VkSurfaceCapabilitiesKHR        capabilities;
 };
 
 class TriangleVulkan{
@@ -40,45 +40,48 @@ public:
     void run();
 
 private:
-    void initVulkan();
     void initWindow();
+    void initVulkan();
     void createInstance();
     void checkGlfwExtension(VkInstanceCreateInfo &createInfo);
     void checkVkExtension();
     void createSurface();
     void pickPhysicalDevice();
-    bool checkDeviceExtensionSupport(VkPhysicalDevice device);
     bool isDeviceSuitable(const VkPhysicalDevice& device);
     QueueFamilyIndices findQueueFamilies(const VkPhysicalDevice& device);
-    void createLogicalDevice();
+    bool checkDeviceExtensionSupport(VkPhysicalDevice device);
     SwapChainSupportDetails queueSwapChainSupport(const VkPhysicalDevice& device);
+//----------------------------------------------------------------------------------------------------------------------
+    void createLogicalDevice();
+    void createSwapChain();
     VkSurfaceFormatKHR chooseSwapChainFormats(const std::vector<VkSurfaceFormatKHR>& availableFormats);
     VkPresentModeKHR chooseSwapChainPresent(const std::vector<VkPresentModeKHR>& availablePresentModes);
     VkExtent2D chooseSwapChainExtent(const VkSurfaceCapabilitiesKHR& capabilities);
-    void createSwapChain();
-    void createGraphicsPipeline();
-    VkShaderModule createShaderModule(const std::vector<char>& code);
+//----------------------------------------------------------------------------------------------------------------------
     void createImageViews();
     void createRenderPass();
+    void createGraphicsPipeline();
+    VkShaderModule createShaderModule(const std::vector<char>& code);
+//----------------------------------------------------------------------------------------------------------------------
     void createFramebuffers();
+//----------------------------------------------------------------------------------------------------------------------
     void createCommandPool();
+//----------------------------------------------------------------------------------------------------------------------
     void createCommandBuffer();
-    void drawFrame();
-    void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
+//----------------------------------------------------------------------------------------------------------------------
     void createSyncObjects();
-
-    //---------------------------------------------------------------------
+//----------------------------------------------------------------------------------------------------------------------
     static std::vector<char> readFile(const std::string& fileName);
     void cleanup();
-    void mainLoop();
-    //---------------------------------------------------------------------
+//----------------------------------------------------------------------------------------------------------------------
+    void drawFrame();
+    void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
+//----------------------------------------------------------------------------------------------------------------------
     void printPhysicalDevices(const std::vector<VkPhysicalDevice>& devices);
     void printVkExtensions(const std::vector<VkExtensionProperties>& extensions);
 
 private:
-    const uint32_t                  WIDTH  = 800;
-    const uint32_t                  HEIGHT = 600;
-    GLFWwindow*                     window;
+    std::unique_ptr<MyWindow>       glfwWindow;
     VkInstance                      instance;
     VkPhysicalDevice                physicalDevice = VK_NULL_HANDLE; // физическое устройство
     VkDevice                        device; // логическое устройство
@@ -99,10 +102,8 @@ private:
     std::vector<VkCommandBuffer>    commandBuffers;
     VkSemaphore                     imageAvailableSemaphore;
     VkSemaphore                     renderFinishedSemaphore;
-    VkFence inFlightFence;
-    VkCommandBuffer commandBuffer;
-
-
+    VkFence                         inFlightFence;
+    VkCommandBuffer                 commandBuffer;
 };
 
 #endif //VULKAN_LEARN_TRIANGLEVULKAN_H
