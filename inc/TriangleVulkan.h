@@ -120,6 +120,11 @@ private:
     void printPhysicalDevices(const std::vector<VkPhysicalDevice>& devices);
     void printVkExtensions(const std::vector<VkExtensionProperties>& extensions);
 
+
+    void generateCircleVertices(float radius, int segmentCount, glm::vec3 color);
+    void generateCircleIndices(int segmentCount);
+    void createIndexBuffer();
+
 private:
     std::unique_ptr<MyWindow>       glfwWindow;
     VkInstance                      instance;
@@ -148,11 +153,11 @@ private:
     VkBuffer                        vertexBuffer;
     VkDeviceMemory                  vertexBufferMemory;
 
-    const std::vector<Vertex> vertices = {
-            {{0.0f, -0.5f}, {1.0f, 1.0f, 1.0f}},
-            {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
-            {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}
-    };
+    VkBuffer                        indexBuffer;
+    VkDeviceMemory                  indexBufferMemory;
+
+     std::vector<Vertex> vertices;
+     std::vector<uint16_t> indices;
 };
 
 #endif //VULKAN_LEARN_TRIANGLEVULKAN_H
