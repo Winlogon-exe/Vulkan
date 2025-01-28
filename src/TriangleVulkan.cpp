@@ -887,61 +887,47 @@ void TriangleVulkan::createSyncObjects()
     }
 }
 
-// ????
-void TriangleVulkan::cleanup() {
-    cleanupSwapChain();
-
-    vkDestroyPipeline(device, graphicsPipeline, nullptr);
-    vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
-    vkDestroyRenderPass(device, renderPass, nullptr);
-
-    vkDestroyBuffer(device, vertexBuffer, nullptr);
-    vkDestroyBuffer(device, indexBuffer, nullptr);
-
-    vkFreeMemory(device, vertexBufferMemory, nullptr);
-    vkFreeMemory(device, indexBufferMemory, nullptr);
-
-    vkDestroyCommandPool(device, commandPool, nullptr);
-
-    vkDestroyDevice(device, nullptr);
-
-    vkDestroySurfaceKHR(instance, surface, nullptr);
-    vkDestroyInstance(instance, nullptr);
-}
-
-// Создание буфера
-void TriangleVulkan::createVertexBuffer()
+void TriangleVulkan::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties,
+                                  VkBuffer &buffer, VkDeviceMemory &bufferMemory)
 {
     VkBufferCreateInfo bufferInfo{};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    bufferInfo.size = sizeof(vertices[0]) * vertices.size(); // Размер буфера
-    bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;    // Тип использования
+    bufferInfo.size = size; // Размер буфера
+    bufferInfo.usage = usage;    // Тип использования
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;      // Только одна очередь
 
-    if (vkCreateBuffer(device, &bufferInfo, nullptr, &vertexBuffer) != VK_SUCCESS) {
+    if (vkCreateBuffer(device, &bufferInfo, nullptr, &buffer) != VK_SUCCESS) {
         throw std::runtime_error("failed to create vertex buffer!");
     }
 
     // Запрос памяти для буфера
     VkMemoryRequirements memRequirements{};
-    vkGetBufferMemoryRequirements(device, vertexBuffer, &memRequirements);
+    vkGetBufferMemoryRequirements(device, buffer, &memRequirements);
 
     VkMemoryAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits,properties);
 
-    if (vkAllocateMemory(device, &allocInfo, nullptr, &vertexBufferMemory) != VK_SUCCESS) {
+    if (vkAllocateMemory(device, &allocInfo, nullptr, &bufferMemory) != VK_SUCCESS) {
         throw std::runtime_error("failed to allocate vertex buffer memory!");
     }
 
-    // Связываем память с буфером
-    vkBindBufferMemory(device, vertexBuffer, vertexBufferMemory, 0);
+    // Связываем буфер с памятью
+    vkBindBufferMemory(device, buffer, bufferMemory, 0);
+}
+
+// Создание буфера
+void TriangleVulkan::createVertexBuffer()
+{
+    VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
+    createBuffer(bufferSize,VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, vertexBuffer, vertexBufferMemory);
 
     // Копируем данные в память буфера
     void* data;
-    vkMapMemory(device, vertexBufferMemory, 0, bufferInfo.size, 0, &data);
-    memcpy(data, vertices.data(), (size_t)bufferInfo.size);
+    vkMapMemory(device, vertexBufferMemory, 0, bufferSize, 0, &data);
+    memcpy(data, vertices.data(), (size_t)bufferSize);
     vkUnmapMemory(device, vertexBufferMemory);
 }
 
@@ -958,6 +944,19 @@ uint32_t TriangleVulkan::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFla
         }
     }
     throw std::runtime_error("failed to find suitable memory type!");
+}
+
+void TriangleVulkan::createIndexBuffer()
+{
+    VkDeviceSize bufferSize = sizeof (indices[0]) * indices.size();
+    createBuffer(bufferSize,VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,indexBuffer,indexBufferMemory);
+
+    // Копируем данные в память буфера
+    void* data;
+    vkMapMemory(device, indexBufferMemory, 0, bufferSize, 0, &data);
+    memcpy(data, indices.data(), (size_t)bufferSize);
+    vkUnmapMemory(device, indexBufferMemory);
 }
 
 void TriangleVulkan::generateCircleVertices(float radius, int segmentCount, glm::vec3 color) {
@@ -987,41 +986,6 @@ void TriangleVulkan::generateCircleIndices(int segmentCount) {
     }
 }
 
-void TriangleVulkan::createIndexBuffer()
-{
-    VkBufferCreateInfo bufferInfo{};
-    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    bufferInfo.size = sizeof(indices[0]) * indices.size(); // Размер буфера
-    bufferInfo.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;   // Тип использования
-    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;    // Только одна очередь
-
-    if (vkCreateBuffer(device, &bufferInfo, nullptr, &indexBuffer) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create index buffer!");
-    }
-
-    // Запрос памяти для буфера
-    VkMemoryRequirements memRequirements{};
-    vkGetBufferMemoryRequirements(device, indexBuffer, &memRequirements);
-
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
-    if (vkAllocateMemory(device, &allocInfo, nullptr, &indexBufferMemory) != VK_SUCCESS) {
-        throw std::runtime_error("failed to allocate index buffer memory!");
-    }
-
-    // Связываем память с буфером
-    vkBindBufferMemory(device, indexBuffer, indexBufferMemory, 0);
-
-    // Копируем данные в память буфера
-    void* data;
-    vkMapMemory(device, indexBufferMemory, 0, bufferInfo.size, 0, &data);
-    memcpy(data, indices.data(), (size_t)bufferInfo.size);
-    vkUnmapMemory(device, indexBufferMemory);
-}
-
 void TriangleVulkan::cleanupSwapChain()
 {
     for (auto framebuffer : swapChainFramebuffers)
@@ -1034,5 +998,27 @@ void TriangleVulkan::cleanupSwapChain()
         vkDestroyImageView(device, imageView, nullptr);
     }
     vkDestroySwapchainKHR(device, swapChain, nullptr);
+}
+
+// ????
+void TriangleVulkan::cleanup() {
+    cleanupSwapChain();
+
+    vkDestroyPipeline(device, graphicsPipeline, nullptr);
+    vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
+    vkDestroyRenderPass(device, renderPass, nullptr);
+
+    vkDestroyBuffer(device, vertexBuffer, nullptr);
+    vkDestroyBuffer(device, indexBuffer, nullptr);
+
+    vkFreeMemory(device, vertexBufferMemory, nullptr);
+    vkFreeMemory(device, indexBufferMemory, nullptr);
+
+    vkDestroyCommandPool(device, commandPool, nullptr);
+
+    vkDestroyDevice(device, nullptr);
+
+    vkDestroySurfaceKHR(instance, surface, nullptr);
+    vkDestroyInstance(instance, nullptr);
 }
 

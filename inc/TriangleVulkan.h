@@ -103,7 +103,9 @@ private:
 //----------------------------------------------------------------------------------------------------------------------
     void createCommandPool();
 //----------------------------------------------------------------------------------------------------------------------
+    void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory);
     void createVertexBuffer();
+    void createIndexBuffer();
     uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
 //----------------------------------------------------------------------------------------------------------------------
     void createCommandBuffer();
@@ -120,10 +122,8 @@ private:
     void printPhysicalDevices(const std::vector<VkPhysicalDevice>& devices);
     void printVkExtensions(const std::vector<VkExtensionProperties>& extensions);
 
-
     void generateCircleVertices(float radius, int segmentCount, glm::vec3 color);
     void generateCircleIndices(int segmentCount);
-    void createIndexBuffer();
 
 private:
     std::unique_ptr<MyWindow>       glfwWindow;
