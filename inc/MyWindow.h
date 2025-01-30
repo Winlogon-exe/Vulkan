@@ -20,7 +20,7 @@ public:
     void init();
     void destroyWindow();
     void mainLoop(const std::function<void()>& draw);
-    std::pair<uint32_t,const char**> getExtension();
+    //std::pair<uint32_t,const char**> getExtension();
 
 public:
     GLFWwindow * getWindow() const;

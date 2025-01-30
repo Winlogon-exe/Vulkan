@@ -8,19 +8,33 @@ void TriangleVulkan::run()
 {
     initWindow();
     initVulkan();
-    glfwWindow->mainLoop([this]() { drawFrame(); });
+    mainLoop();
     cleanup();
 }
 
 void TriangleVulkan::initWindow()
 {
-    glfwWindow = std::make_unique<MyWindow>();
-    glfwWindow->init();
+    glfwInit();
+    glfwWindowHint(GLFW_CLIENT_API,GLFW_NO_API);
+    glfwWindowHint(GLFW_RESIZABLE,GLFW_TRUE);
+    window = glfwCreateWindow(WIDTH,HEIGHT,"VULKAN", nullptr, nullptr);
+    glfwSetWindowUserPointer(window, this);
+    glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
+}
+
+void TriangleVulkan::mainLoop() {
+    while (!glfwWindowShouldClose(window)) {
+        glfwPollEvents();
+        drawFrame();
+    }
+
+    vkDeviceWaitIdle(device);
 }
 
 void TriangleVulkan::initVulkan()
 {
     createInstance();           // Получить расширения, заполнить VkApplicationInfo, VkInstanceCreateInfo, создать Instance
+    setupDebugMessenger();
     createSurface();            // Создать окно и связать его с поверхностью (Surface) для рендеринга
     pickPhysicalDevice();       // Выбрать физическое устройство, поддерживающее нужные расширения, включая поддержку SwapChain и семейств очередей
     createLogicalDevice();      // Создать логическое устройство на основе выбранного физического устройства и семейства очередей
@@ -36,29 +50,49 @@ void TriangleVulkan::initVulkan()
     createVertexBuffer();
     createIndexBuffer();
 
-    createCommandBuffer();      // Создать Command Buffer для записи команд рендеринга на основе commandPool
+    createCommandBuffers();      // Создать Command Buffer для записи команд рендеринга на основе commandPool
     createSyncObjects();        // Создать семафоры для синхронизации между очередями на основе VkSemaphore
 }
 
 void TriangleVulkan::createInstance()
 {
+    if (enableValidationLayers && !checkValidationLayerSupport()) {
+        throw std::runtime_error("validation layers requested, but not available!");
+    }
+
     VkApplicationInfo appInfo{};
     appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-    appInfo.pApplicationName = "TriangleVulkan";
-    appInfo.applicationVersion = VK_MAKE_VERSION(1,0,0);
-    appInfo.pEngineName = "No engine";
-    appInfo.engineVersion  = VK_MAKE_VERSION(1,0,0);
-    appInfo.apiVersion = VK_API_VERSION_1_3;
+    appInfo.pApplicationName = "Vulkan";
+    appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
+    appInfo.pEngineName = "No Engine";
+    appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
+    appInfo.apiVersion = VK_API_VERSION_1_0;
 
     VkInstanceCreateInfo createInfo{};
-    createInfo.sType= VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+    createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
     createInfo.pApplicationInfo = &appInfo;
 
-    checkGlfwExtension(createInfo);
-    checkVkExtension();
+    auto extensions = checkGlfwExtension();
+    //checkVkExtension();
+    createInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
+    createInfo.ppEnabledExtensionNames = extensions.data();
 
-    if (vkCreateInstance(&createInfo, nullptr,&instance) != VK_SUCCESS)
+    VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
+    if (enableValidationLayers)
     {
+        createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
+        createInfo.ppEnabledLayerNames = validationLayers.data();
+
+        populateDebugMessengerCreateInfo(debugCreateInfo);
+        createInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT*) &debugCreateInfo;
+    }
+    else
+    {
+        createInfo.enabledLayerCount = 0;
+        createInfo.pNext = nullptr;
+    }
+
+    if (vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS) {
         throw std::runtime_error("failed to create instance!");
     }
 }
@@ -66,17 +100,25 @@ void TriangleVulkan::createInstance()
 // указываем куда будет выводиться изображение(не создаем окно, а указываем куда)
 void TriangleVulkan::createSurface()
 {
-    if (glfwCreateWindowSurface(instance,glfwWindow->getWindow(),nullptr,&surface) != VK_SUCCESS)
+    if (glfwCreateWindowSurface(instance,window,nullptr,&surface) != VK_SUCCESS)
     {
         throw std::runtime_error("Failed to create window Surface");
     }
 }
 
-void TriangleVulkan::checkGlfwExtension(VkInstanceCreateInfo &createInfo)
+std::vector<const char*> TriangleVulkan::checkGlfwExtension()
 {
-    std::pair<uint32_t,const char**> extension = glfwWindow -> getExtension();
-    createInfo.enabledExtensionCount = extension.first;
-    createInfo.ppEnabledExtensionNames = extension.second;
+    uint32_t glfwExtensionCount = 0;
+    const char** glfwExtensions;
+    glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
+
+    std::vector<const char*> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
+
+    if (enableValidationLayers) {
+        extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    }
+
+    return extensions;
 }
 
 void TriangleVulkan::checkVkExtension()
@@ -105,7 +147,7 @@ void TriangleVulkan::pickPhysicalDevice()
     std::vector<VkPhysicalDevice> devices(deviceCount);
     vkEnumeratePhysicalDevices(instance,&deviceCount,devices.data());
 
-    printPhysicalDevices(devices);
+    //printPhysicalDevices(devices);
 
     for (const auto& device : devices)
     {
@@ -339,7 +381,7 @@ VkExtent2D TriangleVulkan::chooseSwapChainExtent(const VkSurfaceCapabilitiesKHR 
     else
     {
         int width,height;
-        glfwGetFramebufferSize(glfwWindow->getWindow(),&width,&height);
+        glfwGetFramebufferSize(window,&width,&height);
 
         VkExtent2D actualExtent  = {
                 static_cast<uint32_t> (width),
@@ -350,6 +392,23 @@ VkExtent2D TriangleVulkan::chooseSwapChainExtent(const VkSurfaceCapabilitiesKHR 
         actualExtent.height = std::max(capabilities.minImageExtent.height, std::min(capabilities.maxImageExtent.height, actualExtent.height));
         return actualExtent;
     }
+}
+
+void TriangleVulkan::recreateSwapChain()
+{
+    int width = 0, height = 0;
+    glfwGetFramebufferSize(window, &width, &height);
+    while (width == 0 || height == 0)
+    {
+        glfwGetFramebufferSize(window, &width, &height);
+        glfwWaitEvents();
+    }
+
+    vkDeviceWaitIdle(device);
+    cleanupSwapChain();
+    createSwapChain();
+    createImageViews();
+    createFramebuffers();
 }
 
 void TriangleVulkan::createSwapChain()
@@ -406,10 +465,11 @@ void TriangleVulkan::createSwapChain()
 
     // Если swap chain станет недействительной, например, из-за изменения размера окна
     // ее нужно будет воссоздать с нуля и в поле oldSwapChain указать ссылку на старую swap chain
-    createInfo.oldSwapchain = VK_NULL_HANDLE;
+   // createInfo.oldSwapchain = swapChain; // я не понимаю как это говно работает
 
     if (vkCreateSwapchainKHR(device, &createInfo, nullptr, &swapChain) != VK_SUCCESS)
     {
+
         throw std::runtime_error("\nfailed to create swap chain!");
     }
 
@@ -450,7 +510,6 @@ void TriangleVulkan::createGraphicsPipeline()
     auto attributeDescriptions = Vertex::getAttributeDescriptions();
 
     // описывает формат данных вершин, которые передаются в вершинный шейдер
-    // поскольку данные вершин мы жестко прописали в вершинном шейдере, укажем, что данных для загрузки нет.
     VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
     vertexInputInfo.sType                           = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
     vertexInputInfo.vertexBindingDescriptionCount   = 1;
@@ -492,7 +551,7 @@ void TriangleVulkan::createGraphicsPipeline()
     rasterizer.sType                    = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
     rasterizer.depthClampEnable         = VK_FALSE; //  если VK_TRUE, фрагменты, которые находятся за пределами ближней и дальней плоскости, не отсекаются
     rasterizer.rasterizerDiscardEnable  = VK_FALSE; //  если VK_TRUE, стадия растеризации отключается и выходные данные не передаются во фреймбуфер
-    rasterizer.polygonMode              = VK_POLYGON_MODE_LINE; // определяет, каким образом генерируются фрагменты
+    rasterizer.polygonMode              = VK_POLYGON_MODE_FILL; // определяет, каким образом генерируются фрагменты
     rasterizer.lineWidth                = 1.0f; // толщина отрезков
     rasterizer.cullMode                 = VK_CULL_MODE_BACK_BIT; // определяет тип отсечения (face culling)
     rasterizer.frontFace                = VK_FRONT_FACE_CLOCKWISE; // порядок обхода вершин (по часовой стрелке или против)
@@ -612,7 +671,7 @@ std::vector<char> TriangleVulkan::readFile(const std::string &fileName)
 VkShaderModule TriangleVulkan::createShaderModule(const std::vector<char>& code)
 {
     VkShaderModuleCreateInfo createInfo{};
-    createInfo.sType    = VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT;
+    createInfo.sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
     createInfo.codeSize = code.size();
     createInfo.pCode    = reinterpret_cast<const uint32_t*>(code.data());
 
@@ -752,15 +811,17 @@ void TriangleVulkan::createCommandPool()
 }
 
 // ????
-void TriangleVulkan::createCommandBuffer()
+void TriangleVulkan::createCommandBuffers()
 {
+    commandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
+
     VkCommandBufferAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     allocInfo.commandPool = commandPool;
     allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocInfo.commandBufferCount = 1;
+    allocInfo.commandBufferCount = (uint32_t) commandBuffers.size();
 
-    if (vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer) != VK_SUCCESS) {
+    if (vkAllocateCommandBuffers(device, &allocInfo, commandBuffers.data()) != VK_SUCCESS) {
         throw std::runtime_error("failed to allocate command buffers!");
     }
 }
@@ -768,48 +829,71 @@ void TriangleVulkan::createCommandBuffer()
 // ????
 void TriangleVulkan::drawFrame()
 {
-    vkWaitForFences(device, 1, &inFlightFence, VK_TRUE, UINT64_MAX);
-    vkResetFences(device, 1, &inFlightFence);
+    vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
 
     uint32_t imageIndex;
-    vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
+    VkResult result = vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
 
-    vkResetCommandBuffer(commandBuffer, /*VkCommandBufferResetFlagBits*/ 0);
-    recordCommandBuffer(commandBuffer, imageIndex);
+    if (result == VK_ERROR_OUT_OF_DATE_KHR)
+    {
+        recreateSwapChain();
+        return;
+    }
+    else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+        throw std::runtime_error("failed to acquire swap chain image!");
+    }
+
+    vkResetFences(device, 1, &inFlightFences[currentFrame]);
+    vkResetCommandBuffer(commandBuffers[currentFrame], /*VkCommandBufferResetFlagBits*/ 0);
+    recordCommandBuffer(commandBuffers[currentFrame], imageIndex);
+
+    VkSemaphore waitSemaphores[] = { imageAvailableSemaphores[currentFrame] };
+    VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
 
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-
-    VkSemaphore waitSemaphores[] = {imageAvailableSemaphore};
-    VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
     submitInfo.waitSemaphoreCount = 1;
     submitInfo.pWaitSemaphores = waitSemaphores;
     submitInfo.pWaitDstStageMask = waitStages;
-
     submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &commandBuffer;
+    submitInfo.pCommandBuffers = &commandBuffers[currentFrame];
 
-    VkSemaphore signalSemaphores[] = {renderFinishedSemaphore};
+    VkSemaphore signalSemaphores[] = {renderFinishedSemaphores[currentFrame]};
     submitInfo.signalSemaphoreCount = 1;
     submitInfo.pSignalSemaphores = signalSemaphores;
 
-    if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFence) != VK_SUCCESS) {
+    if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFences[currentFrame]) != VK_SUCCESS) {
         throw std::runtime_error("failed to submit draw command buffer!");
     }
 
     VkPresentInfoKHR presentInfo{};
     presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-
     presentInfo.waitSemaphoreCount = 1;
     presentInfo.pWaitSemaphores = signalSemaphores;
 
     VkSwapchainKHR swapChains[] = {swapChain};
     presentInfo.swapchainCount = 1;
     presentInfo.pSwapchains = swapChains;
-
     presentInfo.pImageIndices = &imageIndex;
 
-    vkQueuePresentKHR(presentQueue, &presentInfo);
+    result = vkQueuePresentKHR(presentQueue, &presentInfo);
+
+    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebufferResized)
+    {
+        framebufferResized = false;
+        recreateSwapChain();
+    }
+    else if (result != VK_SUCCESS)
+    {
+        throw std::runtime_error("failed to present swap chain image!");
+    }
+
+    currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+}
+
+void TriangleVulkan::framebufferResizeCallback(GLFWwindow *window, int width, int height) {
+    auto app = reinterpret_cast<TriangleVulkan*>(glfwGetWindowUserPointer(window));
+    app->framebufferResized = true;
 }
 
 // ????
@@ -872,6 +956,10 @@ void TriangleVulkan::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
 // ????
 void TriangleVulkan::createSyncObjects()
 {
+    imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
+    renderFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
+    inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
+
     VkSemaphoreCreateInfo semaphoreInfo{};
     semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 
@@ -879,11 +967,15 @@ void TriangleVulkan::createSyncObjects()
     fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
     fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
-    if (vkCreateSemaphore(device, &semaphoreInfo, nullptr, &imageAvailableSemaphore) != VK_SUCCESS ||
-        vkCreateSemaphore(device, &semaphoreInfo, nullptr, &renderFinishedSemaphore) != VK_SUCCESS ||
-        vkCreateFence(device, &fenceInfo, nullptr, &inFlightFence) != VK_SUCCESS)
+    // как я понял для каждого кадра создается отдельные объекты синхронизации
+    for(size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
     {
-        throw std::runtime_error("failed to create synchronization objects for a frame!");
+        if (vkCreateSemaphore(device, &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]) != VK_SUCCESS ||
+            vkCreateSemaphore(device, &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]) != VK_SUCCESS ||
+            vkCreateFence(device, &fenceInfo, nullptr, &inFlightFences[i]) != VK_SUCCESS)
+        {
+            throw std::runtime_error("failed to create synchronization objects for a frame!");
+        }
     }
 }
 
@@ -924,6 +1016,8 @@ void TriangleVulkan::createVertexBuffer()
     createBuffer(bufferSize,VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
                  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, vertexBuffer, vertexBufferMemory);
 
+
+    
     // Копируем данные в память буфера
     void* data;
     vkMapMemory(device, vertexBufferMemory, 0, bufferSize, 0, &data);
@@ -949,7 +1043,7 @@ uint32_t TriangleVulkan::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFla
 void TriangleVulkan::createIndexBuffer()
 {
     VkDeviceSize bufferSize = sizeof (indices[0]) * indices.size();
-    createBuffer(bufferSize,VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+    createBuffer(bufferSize,VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
                  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,indexBuffer,indexBufferMemory);
 
     // Копируем данные в память буфера
@@ -986,6 +1080,16 @@ void TriangleVulkan::generateCircleIndices(int segmentCount) {
     }
 }
 
+void TriangleVulkan::cleanSyncObjects()
+{
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+    {
+        vkDestroySemaphore(device, renderFinishedSemaphores[i], nullptr);
+        vkDestroySemaphore(device, imageAvailableSemaphores[i], nullptr);
+        vkDestroyFence(device, inFlightFences[i], nullptr);
+    }
+}
+
 void TriangleVulkan::cleanupSwapChain()
 {
     for (auto framebuffer : swapChainFramebuffers)
@@ -1000,7 +1104,6 @@ void TriangleVulkan::cleanupSwapChain()
     vkDestroySwapchainKHR(device, swapChain, nullptr);
 }
 
-// ????
 void TriangleVulkan::cleanup() {
     cleanupSwapChain();
 
@@ -1008,17 +1111,103 @@ void TriangleVulkan::cleanup() {
     vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
     vkDestroyRenderPass(device, renderPass, nullptr);
 
-    vkDestroyBuffer(device, vertexBuffer, nullptr);
     vkDestroyBuffer(device, indexBuffer, nullptr);
-
-    vkFreeMemory(device, vertexBufferMemory, nullptr);
     vkFreeMemory(device, indexBufferMemory, nullptr);
+
+    vkDestroyBuffer(device, vertexBuffer, nullptr);
+    vkFreeMemory(device, vertexBufferMemory, nullptr);
+
+    cleanSyncObjects();
 
     vkDestroyCommandPool(device, commandPool, nullptr);
 
     vkDestroyDevice(device, nullptr);
 
+    if (enableValidationLayers)
+    {
+        DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
+    }
+
     vkDestroySurfaceKHR(instance, surface, nullptr);
     vkDestroyInstance(instance, nullptr);
+
+    glfwDestroyWindow(window);
+    glfwTerminate();
+}
+
+VkResult TriangleVulkan::CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT *pCreateInfo,const VkAllocationCallbacks *pAllocator,VkDebugUtilsMessengerEXT *pDebugMessenger)
+{
+    auto func = (PFN_vkCreateDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
+    if (func != nullptr)
+    {
+        return func(instance, pCreateInfo, pAllocator, pDebugMessenger);
+    }
+    else
+    {
+        return VK_ERROR_EXTENSION_NOT_PRESENT;
+    }
+}
+
+void TriangleVulkan::setupDebugMessenger()
+{
+    if (!enableValidationLayers)
+        return;
+
+    VkDebugUtilsMessengerCreateInfoEXT createInfo;
+    populateDebugMessengerCreateInfo(createInfo);
+
+    if (CreateDebugUtilsMessengerEXT(instance, &createInfo, nullptr, &debugMessenger) != VK_SUCCESS)
+    {
+        throw std::runtime_error("failed to set up debug messenger!");
+    }
+}
+
+void TriangleVulkan::populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT &createInfo)
+{
+    createInfo = {};
+    createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+    createInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+    createInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+    createInfo.pfnUserCallback = debugCallback;
+}
+
+void TriangleVulkan::DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger,const VkAllocationCallbacks *pAllocator)
+{
+    auto func = (PFN_vkDestroyDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
+    if (func != nullptr) {
+        func(instance, debugMessenger, pAllocator);
+    }
+}
+
+VkBool32 VKAPI_CALL TriangleVulkan::debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,VkDebugUtilsMessageTypeFlagsEXT messageType,const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData,void *pUserData)
+{
+    std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
+    return VK_FALSE;
+}
+
+bool TriangleVulkan::checkValidationLayerSupport()
+{
+    uint32_t layerCount;
+    vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
+
+    std::vector<VkLayerProperties> availableLayers(layerCount);
+    vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
+
+    for (const char* layerName : validationLayers) {
+        bool layerFound = false;
+
+        for (const auto& layerProperties : availableLayers) {
+            if (strcmp(layerName, layerProperties.layerName) == 0) {
+                layerFound = true;
+                break;
+            }
+        }
+
+        if (!layerFound) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
