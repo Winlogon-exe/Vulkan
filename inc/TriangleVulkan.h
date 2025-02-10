@@ -21,6 +21,8 @@
 #include <GLFW/glfw3.h>
 #include <GLFW/glfw3native.h>
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <chrono>
 
 #ifdef NDEBUG
 const bool enableValidationLayers = false;
@@ -86,11 +88,18 @@ struct SwapChainSupportDetails {
     VkSurfaceCapabilitiesKHR        capabilities;
 };
 
+struct UniformBufferObject {
+     glm::mat4 model;
+     glm::mat4 view;
+     glm::mat4 proj;
+};
+
 class TriangleVulkan {
 public:
     void run();
 
 private:
+    void createDescriptorSetLayout();
 
     // 1. Функции для валидации и отладки
     VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger);
@@ -149,6 +158,10 @@ private:
     void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory);
     void createVertexBuffer();
     void createIndexBuffer();
+    void createUniformBuffer();
+    void updateUniformBuffer(uint32_t currentImage);
+    void createDescriptorPool();
+    void createDescriptorSets();
     void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
     uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
 
@@ -163,8 +176,6 @@ private:
     static std::vector<char> readFile(const std::string& fileName);
     void printPhysicalDevices(const std::vector<VkPhysicalDevice>& devices);
     void printVkExtensions(const std::vector<VkExtensionProperties>& extensions);
-    void generateCircleVertices(float radius, int segmentCount, glm::vec3 color);
-    void generateCircleIndices(int segmentCount);
     void mainLoop();
 
     // 16. Очистка ресурсов
@@ -176,8 +187,8 @@ private:
         // 1. Базовые компоненты (инициализация)
         VkInstance instance;
         GLFWwindow* window;
-        const uint32_t WIDTH = 900;
-        const uint32_t HEIGHT = 600;
+        const int WIDTH = 900;
+        const int HEIGHT = 600;
         VkSurfaceKHR surface;
         const std::vector<const char*> validationLayers = {"VK_LAYER_KHRONOS_validation"};
         VkDebugUtilsMessengerEXT debugMessenger;
@@ -214,12 +225,27 @@ private:
         // 6. Буферы (Вершины, Индексы)
         VkBuffer vertexBuffer;
         VkDeviceMemory vertexBufferMemory;
+
         VkBuffer indexBuffer;
         VkDeviceMemory indexBufferMemory;
-        std::vector<Vertex> vertices;
-        std::vector<uint16_t> indices;
 
+        std::vector<VkBuffer> uniformBuffers;
+        std::vector<VkDeviceMemory> uniformBuffersMemory;
+        std::vector<void*> uniformBuffersMapped;
+
+        const std::vector<Vertex> vertices = {
+                {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+                {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
+                {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
+                {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}
+        };
+
+        const std::vector<uint16_t> indices = { 0,1,2,2,3,0};
         bool framebufferResized = false;
+
+        VkDescriptorPool descriptorPool;
+        VkDescriptorSetLayout descriptorSetLayout;
+        std::vector<VkDescriptorSet> descriptorSets;
 };
 
 #endif //VULKAN_LEARN_TRIANGLEVULKAN_H

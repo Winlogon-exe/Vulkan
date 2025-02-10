@@ -1,6 +1,5 @@
 #include "TriangleVulkan.h"
 
-
 int main()
 {
     TriangleVulkan triangle;

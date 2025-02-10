@@ -36,22 +36,28 @@ void TriangleVulkan::initVulkan()
     createInstance();           // Получить расширения, заполнить VkApplicationInfo, VkInstanceCreateInfo, создать Instance
     setupDebugMessenger();
     createSurface();            // Создать окно и связать его с поверхностью (Surface) для рендеринга
-    pickPhysicalDevice();       // Выбрать физическое устройство, поддерживающее нужные расширения, включая поддержку SwapChain и семейств очередей
-    createLogicalDevice();      // Создать логическое устройство на основе выбранного физического устройства и семейства очередей
-    createSwapChain();          // Создать SwapChain на основе поддерживаемых форматов
-    createImageViews();         // Создать Image Views на основе изображений из SwapChain для рендеринга
-    createRenderPass();         // создать Render Pass
-    createGraphicsPipeline();   // Прочитать шейдеры, создать шейдерные модули, настроить информацию о pipeline и создать графический pipeline
-    createFramebuffers();       // Создать Framebuffers для каждого images из SwapChain
-    createCommandPool();        // Создать Command Pool для управления очередями команд на основе индекса семейства очередей
 
-    generateCircleVertices(0.7f, 36, {5.0f, 9.0f, 0.3f});// Радиус = 1.0, 36 сегментов,
-    generateCircleIndices(36);
-    createVertexBuffer();
-    createIndexBuffer();
+    pickPhysicalDevice();        // Выбрать физическое устройство, поддерживающее нужные расширения, включая поддержку SwapChain и семейств очередей
+    createLogicalDevice();       // Создать логическое устройство на основе выбранного физического устройства и семейства очередей
+
+    createSwapChain();           // Создать SwapChain на основе поддерживаемых форматов
+    createImageViews();          // Создать Image Views на основе изображений из SwapChain для рендеринга
+    createRenderPass();          // создать Render Pass
+    createDescriptorSetLayout(); // описать вулкану какие наборы данных будут передаваться в шейдер (юниформы, текстуры)
+
+    createGraphicsPipeline();    // Прочитать шейдеры, создать шейдерные модули, настроить информацию о pipeline и создать графический pipeline
+    createFramebuffers();        // Создать Framebuffers для каждого images из SwapChain
+    createCommandPool();         // Создать Command Pool для управления очередями команд на основе индекса семейства очередей
+
+    createVertexBuffer();        // мы хотим отправлять данные о вершинах разом, а не по одному
+    createIndexBuffer();         // мы хотим отправлять данные о вершинах разом, а не по одному
+
+    createUniformBuffer();       // мы хотим отправлять данные о вершинах разом, а не по одному
+    createDescriptorPool();      // дескриптор pool состоит из дескриптор sets
+    createDescriptorSets();      // набор данных для шейдера соответствующий дескриптор layout
 
     createCommandBuffers();      // Создать Command Buffer для записи команд рендеринга на основе commandPool
-    createSyncObjects();        // Создать семафоры для синхронизации между очередями на основе VkSemaphore
+    createSyncObjects();         // Создать семафоры для синхронизации между очередями на основе VkSemaphore
 }
 
 void TriangleVulkan::createInstance()
@@ -520,7 +526,7 @@ void TriangleVulkan::createGraphicsPipeline()
     // какая геометрия образуется из вершин и разрешен ли рестарт геометрии для таких геометрий,
     VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
     inputAssembly.sType                  = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-    inputAssembly.topology               = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+    inputAssembly.topology               = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     inputAssembly.primitiveRestartEnable = VK_FALSE;
 
     // вьюпорт описывает область фреймбуфера, в которую рендерятся выходные данные
@@ -554,21 +560,14 @@ void TriangleVulkan::createGraphicsPipeline()
     rasterizer.polygonMode              = VK_POLYGON_MODE_FILL; // определяет, каким образом генерируются фрагменты
     rasterizer.lineWidth                = 1.0f; // толщина отрезков
     rasterizer.cullMode                 = VK_CULL_MODE_BACK_BIT; // определяет тип отсечения (face culling)
-    rasterizer.frontFace                = VK_FRONT_FACE_CLOCKWISE; // порядок обхода вершин (по часовой стрелке или против)
+    rasterizer.frontFace                = VK_FRONT_FACE_COUNTER_CLOCKWISE; // порядок обхода вершин (по часовой стрелке или против)
     rasterizer.depthBiasEnable          = VK_FALSE; // значения глубины (выкл)
-    rasterizer.depthBiasConstantFactor  = 0.0f; // Optional значения глубины (выкл)
-    rasterizer.depthBiasClamp           = 0.0f; // Optional значения глубины (выкл)
-    rasterizer.depthBiasSlopeFactor     = 0.0f; // Optional значения глубины (выкл)
 
     // сглаживание
     VkPipelineMultisampleStateCreateInfo multisampling{};
     multisampling.sType                 = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
     multisampling.sampleShadingEnable   = VK_FALSE;
     multisampling.rasterizationSamples  = VK_SAMPLE_COUNT_1_BIT;
-    multisampling.minSampleShading      = 1.0f; // Optional
-    multisampling.pSampleMask           = nullptr; // Optional
-    multisampling.alphaToCoverageEnable = VK_FALSE; // Optional
-    multisampling.alphaToOneEnable      = VK_FALSE; // Optional
 
     // Смешивание цветов
     // Цвет, возвращаемый фрагментным шейдером, нужно объединить с цветом, уже находящимся во фреймбуфере.
@@ -578,24 +577,13 @@ void TriangleVulkan::createGraphicsPipeline()
     VkPipelineColorBlendAttachmentState colorBlendAttachment{};
     colorBlendAttachment.colorWriteMask      = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
     colorBlendAttachment.blendEnable         = VK_FALSE; // если VK_FALSE, цвет из фрагментного шейдера передается без изменений
-    colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_ONE; // Optional
-    colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ZERO; // Optional
-    colorBlendAttachment.colorBlendOp        = VK_BLEND_OP_ADD; // Optional
-    colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE; // Optional
-    colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO; // Optional
-    colorBlendAttachment.alphaBlendOp        = VK_BLEND_OP_ADD; // Optional
 
      // 2 - способ Объединить старое и новое значение с помощью побитовой операции
     VkPipelineColorBlendStateCreateInfo colorBlending{};
     colorBlending.sType             = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
     colorBlending.logicOpEnable     = VK_FALSE;
-    colorBlending.logicOp           = VK_LOGIC_OP_COPY; // Optional
     colorBlending.attachmentCount   = 1;
     colorBlending.pAttachments      = &colorBlendAttachment;
-    colorBlending.blendConstants[0] = 0.0f; // Optional
-    colorBlending.blendConstants[1] = 0.0f; // Optional
-    colorBlending.blendConstants[2] = 0.0f; // Optional
-    colorBlending.blendConstants[3] = 0.0f; // Optional
 
     // Динамическое состояние
     // Некоторые состояния графического конвейера можно изменять, не создавая конвейер заново, размер вьюпорта, ширину отрезков и константы смешивания
@@ -613,10 +601,9 @@ void TriangleVulkan::createGraphicsPipeline()
     // uniform - глобальные переменные из шейдеров необходимо указать во время создания конвейера с помощью объекта VkPipelineLayout(даже если их нет)
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipelineLayoutInfo.setLayoutCount         = 0;
-    pipelineLayoutInfo.pSetLayouts            = nullptr; // Optional
-    pipelineLayoutInfo.pushConstantRangeCount = 0; // Optional
-    pipelineLayoutInfo.pPushConstantRanges    = nullptr; // Optional
+    pipelineLayoutInfo.setLayoutCount         = 1;
+    pipelineLayoutInfo.pSetLayouts            = &descriptorSetLayout;
+
 
     if (vkCreatePipelineLayout(device,&pipelineLayoutInfo,nullptr,&pipelineLayout) != VK_SUCCESS)
     {
@@ -624,22 +611,20 @@ void TriangleVulkan::createGraphicsPipeline()
     }
 
     VkGraphicsPipelineCreateInfo pipelineInfo{};
-    pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-    pipelineInfo.stageCount = 2;
-    pipelineInfo.pStages = shaderStages;
-    pipelineInfo.pVertexInputState = &vertexInputInfo;
-    pipelineInfo.pInputAssemblyState = &inputAssembly;
-    pipelineInfo.pViewportState = &viewportState;
-    pipelineInfo.pRasterizationState = &rasterizer;
-    pipelineInfo.pMultisampleState = &multisampling;
-    pipelineInfo.pDepthStencilState = nullptr;
-    pipelineInfo.pColorBlendState = &colorBlending;
-    pipelineInfo.pDynamicState = &dynamicState;
-    pipelineInfo.layout = pipelineLayout;
-    pipelineInfo.renderPass = renderPass;
-    pipelineInfo.subpass = 0;
-    pipelineInfo.basePipelineHandle = VK_NULL_HANDLE; // Optional
-    pipelineInfo.basePipelineIndex = -1; // Optional
+    pipelineInfo.sType                  = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    pipelineInfo.stageCount             = 2;
+    pipelineInfo.pStages                = shaderStages;
+    pipelineInfo.pVertexInputState      = &vertexInputInfo;
+    pipelineInfo.pInputAssemblyState    = &inputAssembly;
+    pipelineInfo.pViewportState         = &viewportState;
+    pipelineInfo.pRasterizationState    = &rasterizer;
+    pipelineInfo.pMultisampleState      = &multisampling;
+    pipelineInfo.pDepthStencilState     = nullptr;
+    pipelineInfo.pColorBlendState       = &colorBlending;
+    pipelineInfo.pDynamicState          = &dynamicState;
+    pipelineInfo.layout                 = pipelineLayout;
+    pipelineInfo.renderPass             = renderPass;
+    pipelineInfo.subpass                = 0;
 
     if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline) != VK_SUCCESS) {
         throw std::runtime_error("failed to create graphics pipeline!");
@@ -686,44 +671,24 @@ VkShaderModule TriangleVulkan::createShaderModule(const std::vector<char>& code)
 // ????
 void TriangleVulkan::createRenderPass()
 {
-    // Настройка буферов (attachments)
     VkAttachmentDescription colorAttachment{};
-    colorAttachment.format  = swapChainImageFormat;
+    colorAttachment.format = swapChainImageFormat;
     colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
-    // указывают, что делать с данными буфера перед рендерингом и после него
-    colorAttachment.loadOp  = VK_ATTACHMENT_LOAD_OP_CLEAR;   // буфер очищается в начале прохода рендера
-    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE; // содержимое буфера сохраняется в память для дальнейшего использования
-
-    // нам нужно вывести отрендеренный треугольник на экран, поэтому перейдем к операции сохранения
-    colorAttachment.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;   // Для буфера трафарета
-    colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE; // Для буфера трафарета
-
-    // чтобы images были переведены в layouts, подходящие для дальнейших операций
-
-    // указывается layout, в котором будет image перед началом прохода рендера
-    colorAttachment.initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED; // нас не интересует предыдущий layout, в котором был image
-
-    // указывается layout, в который image будет автоматически переведен после завершения прохода рендера
-    colorAttachment.finalLayout    = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR; // вывести наш image на экран
-
-    // Подпроходы (subpasses)
     VkAttachmentReference colorAttachmentRef{};
-    colorAttachmentRef.attachment = 0; // порядковый номер буфера в массиве
-    colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // layout буфера во время подпрохода, ссылающегося на этот буфер.
+    colorAttachmentRef.attachment = 0;
+    colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
     VkSubpassDescription subpass{};
-    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS; // явно указать, что это графический подпроход
+    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
     subpass.colorAttachmentCount = 1;
     subpass.pColorAttachments = &colorAttachmentRef;
-
-    // Проход рендера (render pass)
-    VkRenderPassCreateInfo renderPassInfo{};
-    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-    renderPassInfo.attachmentCount = 1;
-    renderPassInfo.pAttachments = &colorAttachment;
-    renderPassInfo.subpassCount = 1;
-    renderPassInfo.pSubpasses = &subpass;
 
     VkSubpassDependency dependency{};
     dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
@@ -732,12 +697,18 @@ void TriangleVulkan::createRenderPass()
     dependency.srcAccessMask = 0;
     dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
+    VkRenderPassCreateInfo renderPassInfo{};
+    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    renderPassInfo.attachmentCount = 1;
+    renderPassInfo.pAttachments = &colorAttachment;
+    renderPassInfo.subpassCount = 1;
+    renderPassInfo.pSubpasses = &subpass;
     renderPassInfo.dependencyCount = 1;
     renderPassInfo.pDependencies = &dependency;
 
-    if (vkCreateRenderPass(device,&renderPassInfo,nullptr,&renderPass) != VK_SUCCESS)
-    {
-        throw std::runtime_error("failed to create render pass");
+    if (vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create render pass!");
     }
 }
 
@@ -829,6 +800,7 @@ void TriangleVulkan::createCommandBuffers()
 // ????
 void TriangleVulkan::drawFrame()
 {
+    // убедиться, что предыдущий кадр завершился.
     vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
 
     uint32_t imageIndex;
@@ -842,6 +814,8 @@ void TriangleVulkan::drawFrame()
     else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
         throw std::runtime_error("failed to acquire swap chain image!");
     }
+
+    updateUniformBuffer(currentFrame);
 
     vkResetFences(device, 1, &inFlightFences[currentFrame]);
     vkResetCommandBuffer(commandBuffers[currentFrame], /*VkCommandBufferResetFlagBits*/ 0);
@@ -939,12 +913,10 @@ void TriangleVulkan::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
     VkBuffer vertexBuffers[] = {vertexBuffer};
     VkDeviceSize offsets[] = {0};
     vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-
-    // Привязка индексного буфера
-    vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT16);
+    vkCmdBindIndexBuffer(commandBuffer,indexBuffer,0,VK_INDEX_TYPE_UINT16);
 
     // Отрисовка
-    //vkCmdDraw(commandBuffer, static_cast<uint32_t>(vertices.size()), 1, 0, 0);
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[currentFrame], 0, nullptr);
     vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
     vkCmdEndRenderPass(commandBuffer);
 
@@ -1040,15 +1012,24 @@ void TriangleVulkan::createVertexBuffer()
 
 void TriangleVulkan::createIndexBuffer()
 {
-    VkDeviceSize bufferSize = sizeof (indices[0]) * indices.size();
-    createBuffer(bufferSize,VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,indexBuffer,indexBufferMemory);
+    VkDeviceSize bufferSize = sizeof(indices[0]) * indices.size();
 
-    // Копируем данные в память буфера
+    VkBuffer stagingBuffer;
+    VkDeviceMemory stagingBufferMemory;
+    createBuffer(bufferSize,VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                 VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,stagingBuffer,stagingBufferMemory);
+
     void* data;
-    vkMapMemory(device, indexBufferMemory, 0, bufferSize, 0, &data);
-    memcpy(data, indices.data(), (size_t)bufferSize);
-    vkUnmapMemory(device, indexBufferMemory);
+    vkMapMemory(device,stagingBufferMemory,0,bufferSize,0,&data);
+    memcpy(data,indices.data(),(size_t)bufferSize);
+    vkUnmapMemory(device,stagingBufferMemory);
+
+    createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, indexBuffer, indexBufferMemory);
+    copyBuffer(stagingBuffer,indexBuffer,bufferSize);
+
+    vkDestroyBuffer(device,stagingBuffer,nullptr);
+    vkFreeMemory(device,stagingBufferMemory, nullptr);
 }
 
 void TriangleVulkan::copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size)
@@ -1069,8 +1050,6 @@ void TriangleVulkan::copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDevice
     vkBeginCommandBuffer(commandBuffer, &beginInfo);
 
     VkBufferCopy copyRegion{};
-    copyRegion.srcOffset = 0; // Optional
-    copyRegion.dstOffset = 0; // Optional
     copyRegion.size = size;
 
     vkCmdCopyBuffer(commandBuffer, srcBuffer, dstBuffer, 1, &copyRegion);
@@ -1086,6 +1065,20 @@ void TriangleVulkan::copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDevice
     vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
 }
 
+void TriangleVulkan::createUniformBuffer() {
+    VkDeviceSize bufferSize = sizeof (UniformBufferObject);
+
+    uniformBuffers.resize(bufferSize);
+    uniformBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
+    uniformBuffersMapped.resize(MAX_FRAMES_IN_FLIGHT);
+
+    for(size_t i = 0; i< MAX_FRAMES_IN_FLIGHT; i++)
+    {
+        createBuffer(bufferSize,VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,uniformBuffers[i],uniformBuffersMemory[i]);
+        vkMapMemory(device,uniformBuffersMemory[i],0,bufferSize,0,&uniformBuffersMapped[i]);
+    }
+}
+
 // Требования к памяти
 uint32_t TriangleVulkan::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties)
 {
@@ -1099,33 +1092,6 @@ uint32_t TriangleVulkan::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFla
         }
     }
     throw std::runtime_error("failed to find suitable memory type!");
-}
-
-void TriangleVulkan::generateCircleVertices(float radius, int segmentCount, glm::vec3 color) {
-
-    vertices.clear();
-    // Генерация вершин по окружности
-    float angleStep = 2.0f * M_PI / segmentCount;
-    for (int i = 0; i < segmentCount; ++i)
-    {
-        float angle = i * angleStep;
-        float x = radius * cos(angle);
-        float y = radius * sin(angle);
-
-        vertices.push_back({{x, y}, color}); // Окружность
-    }
-}
-
-void TriangleVulkan::generateCircleIndices(int segmentCount) {
-    // Очищаем старые индексы
-    indices.clear();
-
-    // Генерация индексов для линий (создаем "контур" круга)
-    for (int i = 0; i < segmentCount; ++i)
-    {
-        indices.push_back(i);  // Текущая вершина
-        indices.push_back((i + 1) % segmentCount);  // Следующая вершина (с циклическим переходом)
-    }
 }
 
 void TriangleVulkan::cleanSyncObjects()
@@ -1158,6 +1124,14 @@ void TriangleVulkan::cleanup() {
     vkDestroyPipeline(device, graphicsPipeline, nullptr);
     vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
     vkDestroyRenderPass(device, renderPass, nullptr);
+
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        vkDestroyBuffer(device, uniformBuffers[i], nullptr);
+        vkFreeMemory(device, uniformBuffersMemory[i], nullptr);
+    }
+
+    vkDestroyDescriptorPool(device, descriptorPool, nullptr);
+    vkDestroyDescriptorSetLayout(device,descriptorSetLayout, nullptr);
 
     vkDestroyBuffer(device, indexBuffer, nullptr);
     vkFreeMemory(device, indexBufferMemory, nullptr);
@@ -1259,3 +1233,85 @@ bool TriangleVulkan::checkValidationLayerSupport()
     return true;
 }
 
+void TriangleVulkan::createDescriptorSetLayout() {
+    VkDescriptorSetLayoutBinding uboLayoutBinding{};
+    uboLayoutBinding.binding = 0;
+    uboLayoutBinding.descriptorCount = 1;
+    uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    uboLayoutBinding.pImmutableSamplers = nullptr;
+    uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+    VkDescriptorSetLayoutCreateInfo layoutInfo{};
+    layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    layoutInfo.bindingCount = 1;
+    layoutInfo.pBindings = &uboLayoutBinding;
+
+    if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create descriptor set layout!");
+    }
+}
+
+void TriangleVulkan::updateUniformBuffer(uint32_t currentImage) {
+    static auto startTime = std::chrono::high_resolution_clock::now();
+
+    auto currentTime = std::chrono::high_resolution_clock::now();
+    float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+
+    UniformBufferObject ubo{};
+    ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float) swapChainExtent.height, 0.1f, 10.0f);
+    ubo.proj[1][1] *= -1;
+
+    memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
+}
+
+void TriangleVulkan::createDescriptorPool() {
+    VkDescriptorPoolSize poolSize{};
+    poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    poolSize.descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+
+    VkDescriptorPoolCreateInfo poolInfo{};
+    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    poolInfo.poolSizeCount = 1;
+    poolInfo.pPoolSizes = &poolSize;
+    poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+
+    if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create descriptor pool!");
+    }
+}
+
+void TriangleVulkan::createDescriptorSets() {
+    // создаем дескриптор сет из пула дескрипторов (пустые)
+    std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, descriptorSetLayout);
+    VkDescriptorSetAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocInfo.descriptorPool = descriptorPool;
+    allocInfo.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+    allocInfo.pSetLayouts = layouts.data();
+
+    descriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
+    if (vkAllocateDescriptorSets(device, &allocInfo, descriptorSets.data()) != VK_SUCCESS) {
+        throw std::runtime_error("failed to allocate descriptor sets!");
+    }
+
+    // заполняем дескриптор сеты
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        VkDescriptorBufferInfo bufferInfo{};
+        bufferInfo.buffer = uniformBuffers[i];
+        bufferInfo.offset = 0;
+        bufferInfo.range = sizeof(UniformBufferObject);
+
+        VkWriteDescriptorSet descriptorWrite{};
+        descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrite.dstSet = descriptorSets[i];
+        descriptorWrite.dstBinding = 0;
+        descriptorWrite.dstArrayElement = 0;
+        descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        descriptorWrite.descriptorCount = 1;
+        descriptorWrite.pBufferInfo = &bufferInfo;
+
+        vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);
+    }
+}
